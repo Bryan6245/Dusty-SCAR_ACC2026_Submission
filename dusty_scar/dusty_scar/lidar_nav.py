@@ -98,3 +98,11 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# To run lane_follow.py and lidar_nav.py, use:
+
+# source /opt/ros/humble/setup.bash
+# cd /workspaces/isaac_ros-dev/ws
+# source install/setup.bash
+# ros2 run dusty_scar lidar_nav
