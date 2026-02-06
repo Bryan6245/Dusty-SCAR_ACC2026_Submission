@@ -22,6 +22,7 @@ setup(
             'lidar_nav = dusty_scar.lidar_nav:main',
             'lane_follow = dusty_scar.lane_follow:main',
             'exit_then_lane = dusty_scar.exit_then_lane:main',
+'nav2_waypoint_runner = dusty_scar.predetermined_path_control.nav2_waypoint_runner:main',
         ],
     },
 )
