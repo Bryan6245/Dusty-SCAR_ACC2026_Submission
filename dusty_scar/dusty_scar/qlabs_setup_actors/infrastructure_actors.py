@@ -3,6 +3,7 @@ import argparse
 
 from qvl.qlabs import QuanserInteractiveLabs
 from qvl.crosswalk import QLabsCrosswalk
+from qvl.spline_line import QLabsSplineLine
 
 # Road signage actors
 from qvl.stop_sign import QLabsStopSign
@@ -182,6 +183,76 @@ def main():
     spawn_signs("stop_sign", stop, STOP_SIGNS, wait=WAIT)
     spawn_signs("yield_sign", yld, YIELD_SIGNS, wait=WAIT)
     spawn_signs("roundabout_sign", rnd, ROUNDABOUT_SIGNS, wait=WAIT)
+
+        # === WHITE ROAD LINE (single straight line) ===
+    spline = QLabsSplineLine(qlabs)
+
+    LINE_ID = 910               # pick a unique ID
+    LINE_COLOR = [1.0, 1.0, 1.0] # white
+    LINE_WIDTH = 0.015            # meters (adjust if needed)
+
+    # Your requested endpoints:
+    P1 = [-0.100, -1.320, 0.006, LINE_WIDTH]
+    P2 = [-0.100, -0.820, 0.006, LINE_WIDTH]
+
+    # Destroy if it already exists so reruns update it
+    try:
+        spline.actorNumber = LINE_ID
+        spline.destroy()
+    except Exception:
+        pass
+
+    # Spawn the spline actor, then set the 2 points (LINEAR = straight line)
+    spline.spawn_id_degrees(
+        actorNumber=LINE_ID,
+        location=[0, 0, 0],
+        rotation=[0, 0, 0],
+        scale=[1, 1, 1],
+        configuration=QLabsSplineLine.LINEAR,
+        waitForConfirmation=WAIT
+    )
+
+    ok = spline.set_points(
+        color=LINE_COLOR,
+        pointList=[P1, P2],
+        alignEndPointTangents=False,
+        waitForConfirmation=WAIT
+    )
+
+    print(f"[white_line] id={LINE_ID} ok={ok} P1={P1[:3]} P2={P2[:3]} width={LINE_WIDTH}")
+
+        # === WHITE ROAD LINE #2 ===
+    LINE_ID_2 = 911               # new unique ID
+    LINE_COLOR = [1.0, 1.0, 1.0]  # white
+    LINE_WIDTH = 0.015            # keep your tuned width
+
+    P1b = [1.770, 1.700, 0.006, LINE_WIDTH]
+    P2b = [2.080, 1.700, 0.006, LINE_WIDTH]
+
+    try:
+        spline.actorNumber = LINE_ID_2
+        spline.destroy()
+    except Exception:
+        pass
+
+    spline.spawn_id_degrees(
+        actorNumber=LINE_ID_2,
+        location=[0, 0, 0],
+        rotation=[0, 0, 0],
+        scale=[1, 1, 1],
+        configuration=QLabsSplineLine.LINEAR,
+        waitForConfirmation=WAIT
+    )
+
+    ok2 = spline.set_points(
+        color=LINE_COLOR,
+        pointList=[P1b, P2b],
+        alignEndPointTangents=False,
+        waitForConfirmation=WAIT
+    )
+
+    print(f"[white_line] id={LINE_ID_2} ok={ok2} P1={P1b[:3]} P2={P2b[:3]} width={LINE_WIDTH}")
+
 
     qlabs.close()
     print("Done.")
