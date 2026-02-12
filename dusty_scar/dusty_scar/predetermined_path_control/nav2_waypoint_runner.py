@@ -2,13 +2,17 @@
 import json
 import math
 import os
+import threading
 
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
+from rclpy.time import Time
 
 from nav2_msgs.action import NavigateToPose
 from geometry_msgs.msg import PoseStamped
+
+from tf2_ros import Buffer, TransformListener
 
 
 def yaw_deg_to_quat(yaw_deg: float):
@@ -18,18 +22,72 @@ def yaw_deg_to_quat(yaw_deg: float):
     return (0.0, 0.0, qz, qw)
 
 
+def quat_to_yaw_deg(qx: float, qy: float, qz: float, qw: float) -> float:
+    # yaw (Z) from quaternion
+    siny_cosp = 2.0 * (qw * qz + qx * qy)
+    cosy_cosp = 1.0 - 2.0 * (qy * qy + qz * qz)
+    yaw = math.atan2(siny_cosp, cosy_cosp)
+    return math.degrees(yaw)
+
+
 class Nav2WaypointRunner(Node):
     def __init__(self):
         super().__init__("nav2_waypoint_runner")
 
+        # Modes: "run" (default) or "record"
+        self.declare_parameter("mode", "run")
+
+        # Run-mode params
         self.declare_parameter("route_file", "")
         self.declare_parameter("action_name", "/navigate_to_pose")
         self.declare_parameter("frame_id", "map")
 
-        route_file = str(self.get_parameter("route_file").value).strip()
+        # Record-mode params
+        self.declare_parameter("output_route", "")
+        self.declare_parameter("target_frame", "map")
+        self.declare_parameter("base_frame", "base_link")
+
+        self.mode = str(self.get_parameter("mode").value).strip().lower()
+
         self.action_name = str(self.get_parameter("action_name").value).strip()
         self.default_frame_id = str(self.get_parameter("frame_id").value).strip()
 
+        # ---- RECORD MODE ----
+        if self.mode == "record":
+            self.target_frame = str(self.get_parameter("target_frame").value).strip()
+            self.base_frame = str(self.get_parameter("base_frame").value).strip()
+
+            out = str(self.get_parameter("output_route").value).strip()
+            if not out:
+                out = os.path.join(os.path.dirname(__file__), "routes", "demo_route.json")
+            self.output_route = out
+
+            self.tf_buffer = Buffer()
+            self.tf_listener = TransformListener(self.tf_buffer, self)
+
+            self._last_pose = None  # (x,y,yaw_deg)
+            self._waypoints = []
+            self._shutdown_requested = False
+
+            self.get_logger().info("=== RECORD MODE ===")
+            self.get_logger().info(f"Recording TF: {self.target_frame} -> {self.base_frame}")
+            self.get_logger().info(f"Output: {self.output_route}")
+            self.get_logger().info("Commands (type + Enter):")
+            self.get_logger().info("  a = add waypoint at current pose")
+            self.get_logger().info("  u = undo last waypoint")
+            self.get_logger().info("  p = print current pose")
+            self.get_logger().info("  s = save + exit")
+            self.get_logger().info("  q = quit (no save)")
+
+            self.pose_timer = self.create_timer(0.1, self._update_pose)
+            self.shutdown_timer = self.create_timer(0.2, self._check_shutdown)
+
+            t = threading.Thread(target=self._input_loop, daemon=True)
+            t.start()
+            return
+
+        # ---- RUN MODE (your original behavior) ----
+        route_file = str(self.get_parameter("route_file").value).strip()
         if not route_file:
             route_file = os.path.join(os.path.dirname(__file__), "routes", "hub_to_pickup.json")
 
@@ -42,6 +100,7 @@ class Nav2WaypointRunner(Node):
 
         self.client = ActionClient(self, NavigateToPose, self.action_name)
         self.idx = 0
+        self._wait_log_counter = 0
 
         self.get_logger().info(f"Route: {route_file}")
         self.get_logger().info(f"Action: {self.action_name}")
@@ -50,6 +109,7 @@ class Nav2WaypointRunner(Node):
 
         self.timer = self.create_timer(0.2, self._maybe_start)
 
+    # ---------------- RUN MODE ----------------
     def _load_route(self, path: str):
         with open(path, "r") as f:
             return json.load(f)
@@ -60,7 +120,10 @@ class Nav2WaypointRunner(Node):
             self.get_logger().info("Nav2 action server ready. Starting route.")
             self._send_next()
         else:
-            self.get_logger().info("Waiting for /navigate_to_pose...")
+            # Don't spam every 0.2s; log ~every 2s
+            self._wait_log_counter += 1
+            if self._wait_log_counter % 10 == 0:
+                self.get_logger().info("Waiting for /navigate_to_pose...")
 
     def _make_goal(self, x: float, y: float, yaw_deg: float) -> NavigateToPose.Goal:
         goal = NavigateToPose.Goal()
@@ -88,9 +151,9 @@ class Nav2WaypointRunner(Node):
             return
 
         wp = self.waypoints[self.idx]
-        x = wp["x"]
-        y = wp["y"]
-        yaw = wp.get("yaw_deg", 0.0)
+        x = float(wp["x"])
+        y = float(wp["y"])
+        yaw = float(wp.get("yaw_deg", 0.0))
 
         self.get_logger().info(
             f"➡️  Waypoint {self.idx+1}/{len(self.waypoints)}: x={x:.3f}, y={y:.3f}, yaw={yaw:.1f}"
@@ -115,6 +178,75 @@ class Nav2WaypointRunner(Node):
         self.idx += 1
         self._send_next()
 
+    # ---------------- RECORD MODE ----------------
+    def _update_pose(self):
+        try:
+            tf = self.tf_buffer.lookup_transform(self.target_frame, self.base_frame, Time())
+            t = tf.transform.translation
+            r = tf.transform.rotation
+            yaw_deg = quat_to_yaw_deg(r.x, r.y, r.z, r.w)
+            self._last_pose = (float(t.x), float(t.y), float(yaw_deg))
+        except Exception:
+            # TF might not be ready for a moment; don't spam logs
+            self._last_pose = None
+
+    def _input_loop(self):
+        while not self._shutdown_requested:
+            try:
+                cmd = input().strip().lower()
+            except EOFError:
+                cmd = "q"
+
+            if cmd == "p":
+                self._print_pose()
+            elif cmd == "a":
+                self._add_waypoint()
+            elif cmd == "u":
+                self._undo()
+            elif cmd == "s":
+                self._save_and_exit()
+            elif cmd == "q":
+                self.get_logger().info("Quit (no save).")
+                self._shutdown_requested = True
+            elif cmd == "":
+                continue
+            else:
+                self.get_logger().info("Commands: a(add), u(undo), p(print), s(save), q(quit)")
+
+    def _print_pose(self):
+        if not self._last_pose:
+            self.get_logger().warn("No pose yet (TF not ready).")
+            return
+        x, y, yaw = self._last_pose
+        self.get_logger().info(f"POSE: x={x:.3f}, y={y:.3f}, yaw={yaw:.1f} deg")
+
+    def _add_waypoint(self):
+        if not self._last_pose:
+            self.get_logger().warn("No pose yet (TF not ready).")
+            return
+        x, y, yaw = self._last_pose
+        self._waypoints.append({"x": x, "y": y, "yaw_deg": yaw})
+        self.get_logger().info(f"Added waypoint #{len(self._waypoints)}: x={x:.3f}, y={y:.3f}, yaw={yaw:.1f}")
+
+    def _undo(self):
+        if not self._waypoints:
+            self.get_logger().info("No waypoints to undo.")
+            return
+        wp = self._waypoints.pop()
+        self.get_logger().info(f"Undid waypoint: {wp}")
+
+    def _save_and_exit(self):
+        os.makedirs(os.path.dirname(self.output_route), exist_ok=True)
+        payload = {"frame_id": self.target_frame, "waypoints": self._waypoints}
+        with open(self.output_route, "w") as f:
+            json.dump(payload, f, indent=2)
+        self.get_logger().info(f"✅ Saved {len(self._waypoints)} waypoints to {self.output_route}")
+        self._shutdown_requested = True
+
+    def _check_shutdown(self):
+        if self._shutdown_requested:
+            rclpy.shutdown()
+
 
 def main():
     rclpy.init()
@@ -124,4 +256,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
