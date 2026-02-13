@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import math
 
 import rclpy
 from rclpy.node import Node
@@ -21,6 +22,9 @@ class ClickedPointRecorder(Node):
         self.output_route = out
 
         self.waypoints = []
+        self.min_dist_m = 0.50   # only save a click if it's at least 0.5m away
+        self.last_xy = None
+
         os.makedirs(os.path.dirname(self.output_route), exist_ok=True)
 
         self.sub = self.create_subscription(PointStamped, "/clicked_point", self.cb, 10)
@@ -30,12 +34,23 @@ class ClickedPointRecorder(Node):
         self._save()  # create file immediately
 
     def cb(self, msg: PointStamped):
-        # force to your desired frame label; RViz typically already uses 'map'
         x = float(msg.point.x)
         y = float(msg.point.y)
+
+        # Skip if too close to last saved point
+        if self.last_xy is not None:
+            dx = x - self.last_xy[0]
+            dy = y - self.last_xy[1]
+            dist = math.hypot(dx, dy)
+            if dist < self.min_dist_m:
+                self.get_logger().info(f"Skipped (too close): dist={dist:.2f} m")
+                return
+
         self.waypoints.append({"x": x, "y": y})
+        self.last_xy = (x, y)
         self.get_logger().info(f"Added #{len(self.waypoints)}: x={x:.3f}, y={y:.3f}")
         self._save()
+
 
     def _save(self):
         data = {"frame_id": self.frame_id, "waypoints": self.waypoints}
