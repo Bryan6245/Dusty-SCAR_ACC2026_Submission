@@ -5,7 +5,7 @@ from qvl.qlabs import QuanserInteractiveLabs
 from qvl.traffic_light import QLabsTrafficLight
 
 # Put all traffic lights at a visible height (road is ~0.006)
-TL_Z = 0.215  # common in QLabs examples for traffic lights
+TL_Z = 0.006  # common in QLabs examples for traffic lights
 
 # (actor_id, [x,y,z], yaw_deg, config, scale)
 TRAFFIC_LIGHTS = [
