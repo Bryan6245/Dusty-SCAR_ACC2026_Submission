@@ -8,13 +8,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-DATA_DIR = Path("/workspaces/isaac_ros-dev/ws/src/Dusty-SCAR_ACC2026_Submission/datasets/bc_actors/route0_combo_v6")
+DATA_DIR = Path("/workspaces/isaac_ros-dev/ws/src/Dusty-SCAR_ACC2026_Submission/datasets/bc/route0_combo")
 LABELS = DATA_DIR / "labels.csv"
-MODEL_OUT = Path("/workspaces/isaac_ros-dev/ws/src/Dusty-SCAR_ACC2026_Submission/dusty_scar/dusty_scar/DL_Routes/models/bc_route0_actors_steer.pt")
+MODEL_OUT = Path("/workspaces/isaac_ros-dev/ws/src/Dusty-SCAR_ACC2026_Submission/dusty_scar/dusty_scar/DL_Routes/models/bc_route0_steer.pt")
 
 IMG_W, IMG_H = 160, 120
 BATCH = 64
-EPOCHS = 25
+EPOCHS = 15
 LR = 1e-3
 VAL_FRAC = 0.15
 SEED = 7
@@ -39,14 +39,20 @@ class BCDataset(Dataset):
         if random.random() < 0.7:
             factor = random.uniform(0.6, 1.4)
             img = np.clip(img.astype(np.float32) * factor, 0, 255).astype(np.uint8)
-
+# horizontal flip (must negate steering)
+if random.random() < 0.5:
+    img = cv2.flip(img, 1)
+    ang = -ang
         # small shift
         if random.random() < 0.7:
             dx = random.randint(-8, 8)
             dy = random.randint(-4, 4)
             M = np.float32([[1, 0, dx], [0, 1, dy]])
-            img = cv2.warpAffine(img, M, (img.shape[1], img.shape[0]), borderMode=cv2.BORDER_REPLICATE)
-
+            img = cv2.warpAffine
+        # flip (negate steering)
+        if random.random() < 0.5:
+            img = cv2.flip(img, 1)
+            ang = -ang
         return img, ang
 
     def __getitem__(self, i):
