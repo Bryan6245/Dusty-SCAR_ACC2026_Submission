@@ -25,3 +25,4 @@ log/
 dusty_scar/dusty_scar/routes/
 frames_*.pdf
 frames_*.gv
+dusty_scar/dusty_scar/DL_Routes/models/*.pt
