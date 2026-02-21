@@ -7,3 +7,21 @@ __pycache__/
 *.db3
 *.avi
 *.mp4
+
+# --- Generated datasets / rosbags / extracted frames ---
+datasets/
+*.db3
+*.mcap
+*.bag
+*.avi
+*.mp4
+*.jpg
+*.png
+
+# --- ROS build artifacts (if any slip in) ---
+build/
+install/
+log/
+dusty_scar/dusty_scar/routes/
+frames_*.pdf
+frames_*.gv
