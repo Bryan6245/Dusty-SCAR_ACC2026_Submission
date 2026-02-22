@@ -26,3 +26,14 @@ dusty_scar/dusty_scar/routes/
 frames_*.pdf
 frames_*.gv
 dusty_scar/dusty_scar/DL_Routes/models/*.pt
+
+# --- New_Routes: keep repo clean (data + weights not tracked) ---
+dusty_scar/dusty_scar/New_Routes/**/bags/
+dusty_scar/dusty_scar/New_Routes/**/extracted/
+dusty_scar/dusty_scar/New_Routes/**/combo/
+dusty_scar/dusty_scar/New_Routes/**/models/*.pt
+dusty_scar/dusty_scar/New_Routes/**/models/*.pth
+dusty_scar/dusty_scar/New_Routes/**/models/*.onnx
+
+# backups / temp
+**/*.backup_*
