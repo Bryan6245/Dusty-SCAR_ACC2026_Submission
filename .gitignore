@@ -18,6 +18,12 @@ datasets/
 *.jpg
 *.png
 
+# BC route datasets / rosbag / extracted frames / combos / weights
+dusty_scar/dusty_scar/New_Routes/**/bags/
+dusty_scar/dusty_scar/New_Routes/**/extracted/
+dusty_scar/dusty_scar/New_Routes/**/combo/
+dusty_scar/dusty_scar/New_Routes/**/models/
+
 # --- ROS build artifacts (if any slip in) ---
 build/
 install/
