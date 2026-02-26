@@ -10,7 +10,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from geometry_msgs.msg import Twist
 
-MODEL_PATH = "/workspaces/isaac_ros-dev/ws/src/Dusty-SCAR_ACC2026_Submission/dusty_scar/dusty_scar/New_Routes/Route7/models/route7_steer_v2.pt"
+MODEL_PATH = "/workspaces/isaac_ros-dev/ws/src/Dusty-SCAR_ACC2026_Submission/dusty_scar/dusty_scar/New_Routes/Route7/models/route7_steer_v4.pt"
 IMG_TOPIC = "/camera/color_image"
 CMD_TOPIC = "/cmd_vel_nav"
 
