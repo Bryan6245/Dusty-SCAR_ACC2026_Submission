@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import time
+import json
 from pathlib import Path
 
 import rclpy
@@ -21,21 +21,14 @@ class YoloFrontCam(Node):
         self.declare_parameter('weights', 'dusty_scar/dusty_scar/models/yolo/yolo_best.pt')
         self.declare_parameter('image_topic', '/camera/color_image')
         self.declare_parameter('conf', 0.25)
-
-        # -1 CPU, 0 = cuda:0
-        self.declare_parameter('device_id', -1)
-
-        self.declare_parameter('annotated_topic', '/yolo/annotated')
-        self.declare_parameter('detections_topic', '/yolo/detections_text')
-
-        # Demo-friendly throttle
+        self.declare_parameter('device_id', -1)   # -1 cpu, 0 cuda:0
         self.declare_parameter('rate_hz', 3.0)
 
-        # Debug outputs (no GUI needed)
-        self.declare_parameter('save_debug_dir', '/tmp/yolo_debug')
-        self.declare_parameter('save_every_n', 10)
+        self.declare_parameter('annotated_topic', '/yolo/annotated')
+        self.declare_parameter('detections_text_topic', '/yolo/detections_text')
+        self.declare_parameter('detections_json_topic', '/yolo/detections_json')
 
-        # Temp file for inference
+        # Stable inference input for ultralytics
         self.declare_parameter('tmp_image_path', '/tmp/yolo_in.jpg')
 
         self.weights = self.get_parameter('weights').value
@@ -43,15 +36,14 @@ class YoloFrontCam(Node):
         self.conf = float(self.get_parameter('conf').value)
         self.device_id = int(self.get_parameter('device_id').value)
         self.device = f'cuda:{self.device_id}' if self.device_id >= 0 else 'cpu'
-        self.annotated_topic = self.get_parameter('annotated_topic').value
-        self.detections_topic = self.get_parameter('detections_topic').value
         self.rate_hz = float(self.get_parameter('rate_hz').value)
 
-        self.save_debug_dir = Path(str(self.get_parameter('save_debug_dir').value))
-        self.save_every_n = int(self.get_parameter('save_every_n').value)
-        self.tmp_image_path = str(self.get_parameter('tmp_image_path').value)
+        self.annotated_topic = self.get_parameter('annotated_topic').value
+        self.det_txt_topic = self.get_parameter('detections_text_topic').value
+        self.det_json_topic = self.get_parameter('detections_json_topic').value
 
-        self.save_debug_dir.mkdir(parents=True, exist_ok=True)
+        self.tmp_image_path = str(self.get_parameter('tmp_image_path').value)
+        Path(self.tmp_image_path).parent.mkdir(parents=True, exist_ok=True)
 
         self.get_logger().info(f"Loading YOLO weights: {self.weights}")
         self.get_logger().info(f"Device: {self.device} | conf={self.conf} | rate_hz={self.rate_hz}")
@@ -59,18 +51,18 @@ class YoloFrontCam(Node):
         self.bridge = CvBridge()
 
         self.latest_msg = None
-        self.frame_count = 0
-        self.save_count = 0
 
         self.sub = self.create_subscription(Image, self.image_topic, self.on_img, qos_profile_sensor_data)
         self.pub_img = self.create_publisher(Image, self.annotated_topic, 10)
-        self.pub_txt = self.create_publisher(String, self.detections_topic, 10)
+        self.pub_txt = self.create_publisher(String, self.det_txt_topic, 10)
+        self.pub_json = self.create_publisher(String, self.det_json_topic, 10)
 
         self.timer = self.create_timer(1.0 / max(self.rate_hz, 0.5), self.on_timer)
 
         self.get_logger().info(f"Subscribing: {self.image_topic}")
         self.get_logger().info(f"Publishing annotated: {self.annotated_topic}")
-        self.get_logger().info(f"Publishing detections text: {self.detections_topic}")
+        self.get_logger().info(f"Publishing text: {self.det_txt_topic}")
+        self.get_logger().info(f"Publishing json: {self.det_json_topic}")
 
     def on_img(self, msg: Image):
         self.latest_msg = msg
@@ -78,7 +70,6 @@ class YoloFrontCam(Node):
     def on_timer(self):
         if self.latest_msg is None:
             return
-
         msg = self.latest_msg
         self.latest_msg = None
 
@@ -90,7 +81,9 @@ class YoloFrontCam(Node):
             self.get_logger().warn(f"cv_bridge failed: {e}")
             return
 
-        # Write a temp image and run YOLO on the FILE PATH (stable)
+        h, w = frame.shape[:2]
+
+        # Stable inference: write temp image then predict(path)
         try:
             ok = cv2.imwrite(self.tmp_image_path, frame)
             if not ok:
@@ -111,40 +104,42 @@ class YoloFrontCam(Node):
             self.get_logger().warn(f"YOLO predict failed: {e}")
             return
 
-        # Build detections text
+        r0 = results[0]
+        names = r0.names
+
         dets = []
+        det_strs = []
+
         try:
-            r0 = results[0]
-            names = r0.names
             if r0.boxes is not None and len(r0.boxes) > 0:
                 for b in r0.boxes:
                     cls = int(b.cls.item())
                     cf = float(b.conf.item())
-                    dets.append(f"{names.get(cls, str(cls))}:{cf:.2f}")
+                    x1, y1, x2, y2 = [float(v) for v in b.xyxy[0].tolist()]
+                    name = names.get(cls, str(cls))
+                    dets.append({"cls": name, "conf": cf, "xyxy": [x1, y1, x2, y2]})
+                    det_strs.append(f"{name}:{cf:.2f}")
         except Exception:
             pass
 
-        msg_txt = String()
-        msg_txt.data = ", ".join(dets) if dets else "none"
-        try:
-            self.pub_txt.publish(msg_txt)
-        except Exception as e:
-            self.get_logger().warn(f"publish text failed: {e}")
+        # publish text
+        txt = String()
+        txt.data = ", ".join(det_strs) if det_strs else "none"
+        self.pub_txt.publish(txt)
 
-        # Annotate + publish + optional save
+        # publish json with bbox info
+        js = String()
+        js.data = json.dumps({"w": w, "h": h, "dets": dets})
+        self.pub_json.publish(js)
+
+        # publish annotated
         try:
-            annotated = results[0].plot()
+            annotated = r0.plot()
             out = self.bridge.cv2_to_imgmsg(annotated, encoding='bgr8')
             out.header = msg.header
             self.pub_img.publish(out)
-
-            self.frame_count += 1
-            if self.save_every_n > 0 and (self.frame_count % self.save_every_n == 0):
-                self.save_count += 1
-                fn = self.save_debug_dir / f"annotated_{self.save_count:04d}.jpg"
-                cv2.imwrite(str(fn), annotated)
         except Exception as e:
-            self.get_logger().warn(f"publish annotated failed: {e}")
+            self.get_logger().warn(f"annotated publish failed: {e}")
 
 
 def main():
