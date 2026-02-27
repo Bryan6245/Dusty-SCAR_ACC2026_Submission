@@ -43,3 +43,9 @@ dusty_scar/dusty_scar/New_Routes/**/models/*.onnx
 
 # backups / temp
 **/*.backup_*
+
+# Ignore model weights
+ dust_y_scar/dusty_scar/models/
+*.pt
+*.onnx
+*.engine
