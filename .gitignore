@@ -54,3 +54,8 @@ b01b4e7 Traffic responses: stop sign stop_h=0.15 and yield slowdown (75% reducti
 438148a Tune stop sign trigger threshold (stop_h=0.15) for demo
 83d97e2 Add YOLO front-camera detector and route supervisor scripts; ignore model weights
 e1d5b72 Route8 BC FINAL: scripts + notes (model saved locally)
+
+# Logs / outputs
+dusty_scar/dusty_scar/logs/
+*.csv
+*.png
