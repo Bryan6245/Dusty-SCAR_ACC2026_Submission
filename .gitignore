@@ -59,3 +59,10 @@ e1d5b72 Route8 BC FINAL: scripts + notes (model saved locally)
 dusty_scar/dusty_scar/logs/
 *.csv
 *.png
+
+# Logs / generated outputs
+dusty_scar/dusty_scar/logs/
+*.csv
+*.png
+*.mkv
+*.mp4
