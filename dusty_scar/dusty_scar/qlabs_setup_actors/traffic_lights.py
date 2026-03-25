@@ -27,9 +27,9 @@ CYCLE_ALL_TOGETHER = False
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--host", default="localhost")
-    ap.add_argument("--green", type=float, default=6.0)
-    ap.add_argument("--yellow", type=float, default=1.5)
-    ap.add_argument("--all_red", type=float, default=0.5)
+    ap.add_argument("--green", type=float, default=8.0)
+    ap.add_argument("--yellow", type=float, default=4.0)
+    ap.add_argument("--all_red", type=float, default=0.0)
     ap.add_argument("--wait", action="store_true", help="show QLabs confirmations")
     ap.add_argument("--no-wait", action="store_true", help="no confirmations")
     args = ap.parse_args()
